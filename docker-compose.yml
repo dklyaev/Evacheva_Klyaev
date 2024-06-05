@@ -1,0 +1,83 @@
+version: '3'
+
+services:
+
+  pg-master:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    image: postgres-replication
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-master-data:/var/lib/postgresql/data/pgdata
+    environment:
+      - POSTGRES_USER=postgres
+      - ROLE=Master
+      - ARBITER_HOST=pg-arbiter
+      - SLAVE_HOST=pg-slave
+      - POSTGRES_DB=benchmark
+      - POSTGRES_PASSWORD=postgres
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    networks:
+      - backend
+    depends_on:
+      - pg-arbiter
+
+  pg-slave:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    image: postgres-replication
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - pg-slave-data:/var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - ROLE=Slave
+      - ARBITER_HOST=pg-arbiter
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=benchmark
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - MASTER_HOST=pg-master
+      - REPLICATE_FROM=pg-master
+    networks:
+      - backend
+    depends_on:
+      - pg-arbiter
+      - pg-master
+
+  pg-arbiter:
+    build:
+      context: ./arbiter
+      dockerfile: Dockerfile
+    image: postgres_arbiter
+    restart: always
+    ports:
+      - 8000:8000
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=benchmark
+      - MASTER_HOST=pg-master
+    networks:
+      - backend
+    healthcheck:
+      test: curl --fail http://localhost:8000 || exit -1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pg-master-data:
+  pg-slave-data:
+
+networks:
+  backend:
